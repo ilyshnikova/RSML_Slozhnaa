@@ -1,0 +1,7 @@
+*.out
+bad_samples.txt
+*.pyc
+*.csv
+*.npz
+test_clf.py
+/img*

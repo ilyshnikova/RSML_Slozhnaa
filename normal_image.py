@@ -1,219 +1,148 @@
-#import Image
-import graph
-import os
-import sys
+from __future__ import print_function
 import numpy as np
-import component
 import logging
+
+import graph
 
 BLACK = 255
 WHITE = 0
 
-class Normal_image(object):
-
+class NormalImage(object):
     logging.basicConfig(format='%(asctime)s %(message)s')
 
-    def __init__(self, image, contrast=10, in_line=False):
+    def __init__(self, image, ind=-1, need_bin=True):
         self.image = image.reshape(28, 28)
-#        print(self.image)
-
+        self.i = ind
 
         self.width = 28
         self.height = 28
+        self.image_graph = None
+        self.need_bin = need_bin
 
-        color_index = np.percentile(image, 55)
+        if self.i != -1:
+            self.file = open("bad_samples.txt", "a")
 
-        for x in range(0, self.width):
-            for y in range(0, self.height):
-                if (self.image[x][y] > color_index):
-                    self.image[x][y] = WHITE
-                else:
+    def binarize(self):
+        # color_index = 0.7 * np.percentile(self.image, 55) + 0.3 * np.mean(self.image)
+        color_index = np.percentile(self.image, 55)
+
+        for x in range(self.height):
+            for y in range(self.width):
+                if self.image[x][y] > color_index:
                     self.image[x][y] = BLACK
+                else:
+                    self.image[x][y] = WHITE
 
-        for i in (0, 27):
-            for j in range(1, 28):
-                self.image[i][j] = BLACK
-                self.image[j][i] = BLACK
-        self.image_graph = graph.Image_graph(self.image)
+        for x in (1, 27):
+            for y in range(1, 27):
+                self.image[x][y] = WHITE
+                self.image[x][y] = WHITE
 
-
+        self.image_graph = graph.ImageGraph(self.image)
 
     def noise_removal(self):
-#        print("\n----------before noise_removal-----------")
-
-#        self.print_im()
-        self.image_graph = graph.Image_graph(self.image)
-
-        self.image_graph.search_connected_components()
-
-        components = []
-
-#        print("")
-#        self.pr(im)
-        for c in self.image_graph.connected_components:
-            cm = component.Component(c)
-            components.append(cm)
-#            cm.delete(im)
-#            self.pr(im)
+        self.image_graph = graph.ImageGraph(self.image)
+        components = self.image_graph.connected_components
 
         if len(components) <= 1:
             return
 
+        sizes = [float(max(i.width, i.height)) for i in components]
+        sizes.sort(reverse=True)
 
-
-        sizes = []
-        for i in components:
-                sizes += [-max(i.width, i.height)]
-
-        sizes.sort()
-
-        min_letter_size = sizes[len(sizes) - 1];
+        min_letter_size = sizes[-1]
 
         for i in range(1, len(sizes)):
-            if (float(sizes[i - 1]) / float(sizes[i]) > 1.5):
-                min_letter_size = sizes[i - 1];
-                break;
+            if sizes[i - 1] / sizes[i] > 1.5:
+                min_letter_size = sizes[i - 1]
+                break
 
-
-
-        min_letter_size = -min_letter_size
-#
-#        print("min_letter_size", min_letter_size)
-
-#        self.print_im()
         for c in components:
-#            print("delete")
-            if (max(c.width, c.height) < min_letter_size):
+            if max(c.width, c.height) < min_letter_size:
                 c.delete(self.image)
-#                print("THERE")
-#                for point in c.points:
-#
-#                    print(point)
-#                    self.image[point[0]][point[1]] = BLACK
-#                self.print_im()
-#            self.print_im()
 
-#        print("\n----------after noise_removal-----------")
-#        self.print_im()
-
-
-        self.image_graph = graph.Image_graph(self.image)
-        self.image_graph.search_connected_components()
-
-        components = []
-
-#        print("")
-#        self.pr(im)
-        for c in self.image_graph.connected_components:
-            cm = component.Component(c)
-            components.append(cm)
-#            cm.delete(im)
-#            self.pr(im)
-
-
-#        print("c count", len(components))
+        self.image_graph = graph.ImageGraph(self.image)
+        components = self.image_graph.get_connected_components()
 
         if len(components) <= 1:
             return
 
+        sizes = [float(i.num_points) for i in components]
+        sizes.sort(reverse=True)
 
-
-        sizes = []
-        for i in components:
-                sizes += [-i.points_count]
-
-        sizes.sort()
-
-        min_letter_size = sizes[len(sizes) - 1];
+        min_letter_size = sizes[-1]
 
         for i in range(1, len(sizes)):
-            if (float(sizes[i - 1]) / float(sizes[i]) > 2):
-                min_letter_size = sizes[i - 1];
-                break;
+            if sizes[i - 1] / sizes[i] > 2:
+                min_letter_size = sizes[i - 1]
+                break
 
-
-
-        min_letter_size = -min_letter_size
-#
-#        print("min_letter_size", min_letter_size)
-
-#        self.print_im()
         for c in components:
-#            print("delete")
-            if (c.points_count < min_letter_size):
-#                print("THERE")
-                for point in c.points:
-#                    print(point)
-                    self.image[point[0]][point[1]] = BLACK
+            if c.num_points < min_letter_size:
+                c.delete(self.image)
 
+        self.image_graph = graph.ImageGraph(self.image)
+        components = self.image_graph.get_connected_components()
 
+        if len(components) != 1:
+            if self.i != -1:
+                print(self.i, file=self.file)
 
-    def print_im(self):
-        self.pr(self.image)
-
-    def pr(self, im):
-        print("----------------------------")
-        for x in range(0, 28):
-            for y in range(0,28):
-                if (im[x][y] == BLACK):
-                    print("X ", end="")
+    def __str__(self):
+        st = ""
+        st += "--------------------------------------------------------\n"
+        for x in range(self.height):
+            for y in range(self.width):
+                if self.image[x][y] == BLACK:
+                    st += "X "
                 else:
-                    print(". ", end="")
+                    st += ". "
 
+            st += '\n'
+        st += "--------------------------------------------------------\n"
 
-            print("")
-        print("----------------------------")
-
-
+        return st
 
     def get_np_array(self):
-        self.print_im()
         return self.image.reshape(28*28)
 
+    def get_img(self):
+        return self.image
 
     def smooth(self):
+        if self.need_bin:
+            self.binarize()
+
         acount = 1
 
         while acount > 0:
             acount = 0
             self.noise_removal()
-            self.image_graph = graph.Image_graph(self.image)
+            self.image_graph = graph.ImageGraph(self.image)
 
             black_points = self.image_graph.get_black_points()
-            for p in black_points:
+            for x, y in black_points:
                 steps = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)]
-                if (self.image[p[0]][p[1]] == WHITE):
-
+                if self.image[x][y] == BLACK:
                     count = 0
-                    for step in steps:
-                        next_point = (p[0] + step[0], p[1] + step[1])
-                        if (0 <= next_point[0] < 28 and 0 <= next_point[1] < 28 and self.image[next_point[0]][next_point[1]] == BLACK):
-                            count += 1
+                    for dx, dy in steps:
+                        next_point = (x + dx, y + dy)
+                        if 0 <= next_point[0] < 28 and \
+                                0 <= next_point[1] < 28 and self.image[next_point[0]][next_point[1]] == WHITE:
+                                    count += 1
 
-                    if (count > 5):
-#                        print("smooth smooth smooth !!!! ", p)
-                        self.image[p[0]][p[1]] = BLACK
+                    if count > 5:
+                        self.image[x][y] = WHITE
                         acount += 1
 
-                    if (
-                        0 < p[0] < 27
-                        and 0 < p[1] < 27
-                        and (
-                            (
-                                self.image[p[0] + 1][p[1]] == BLACK
-                                and self.image[p[0] - 1][p[1]] == BLACK
-                            )
-                            or ( # так почему то лучше
-                                self.image[p[0]][p[1] + 1] == BLACK
-                                and self.image[p[0]][p[1] - 1] == BLACK
-                            )
-                        )
-                    ):
-#                        print("smooth smooth smooth paralel !!!! ", p)
-                        self.image[p[0]][p[1]] = BLACK
-                        acount += 1
+                    if 0 < x < 27 and 0 < y < 27 and (
+                        self.image[x + 1][y] == WHITE and self.image[x - 1][y] == WHITE or
+                            self.image[x][y + 1] == WHITE and self.image[x][y - 1] == WHITE):
+                                self.image[x][y] = WHITE
+                                acount += 1
+
             self.noise_removal()
 
-
-#            print("count ", acount)
-
+    def __del__(self):
+        if self.i != -1:
+            self.file.close()
